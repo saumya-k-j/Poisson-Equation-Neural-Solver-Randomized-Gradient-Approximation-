@@ -1,103 +1,199 @@
-# 🧮 Neural Approximation of the Poisson Equation Using Randomized Gradient Approximation (RGA)
-
-This repository contains an end-to-end implementation of **Algorithm 2: Randomized Gradient Approximation (RGA)** from Section 7.3 of the referenced paper.  
-The goal is to approximate the analytical solution \( u^*(x) \) of the **Poisson equation** by training a neural network \( u_\theta(x) \) with an unbiased stochastic gradient estimator.
-
-> **Author:** *Ssaumya Jaiswal*  
-> **Institution:** Penn State University — Department of Computer Science and Mathematics  
-> **Keywords:** Poisson Equation · Neural Solvers · Stochastic Approximation · Randomized Gradient Algorithms
+# 🧠 Neural Poisson RGA (Algorithm 2 Implementation)
+A deep learning–based solver for the **Poisson equation** using **Randomized Gradient Approximation (RGA)** — derived from  
+*“Deep Learning for Markov Chains: Lyapunov Functions, Poisson’s Equation, and Stationary Distributions”*  
+by **Yanlin Qu**, **Jose Blanchet**, and **Peter Glynn** *(Columbia Business School & Stanford University, 2023)*.
 
 ---
 
-## 📘 1. Problem Formulation
+## 🧩 Overview
 
-We consider a 1-D stochastic kernel defined on \([0,1]\):
+**Neural Poisson RGA** is a lightweight research framework that demonstrates how neural networks can approximate solutions to **Poisson’s Equation** via **Monte Carlo–based stochastic gradient estimation**.  
+The implementation is built entirely in **PyTorch**, features reproducible experiments, and includes an **interactive Streamlit dashboard** for live visualization.
 
-\[
-X_{n+1} = \frac{X_n + Z}{2}, \quad Z \sim \text{Bernoulli}\!\left(\tfrac{1}{2}\right),
-\]
+The project re-creates **Algorithm 2 (RGA)** from the Qu–Blanchet–Glynn paper, showing how *unbiased gradient estimation* enables convergence to the true solution \(u^*\) without directly computing PDE gradients.
 
-with reward functions
+---
 
-\[
+## ✨ Features
+
+🎓 **Accurate Algorithm 2 reproduction** — faithful to the Qu–Blanchet–Glynn paper.  
+⚙️ **Configurable Parameters** — Tune iterations (T), learning rate (α), batch size, and width.  
+📊 **Automatic Metrics** — Computes MSE, MAE, and ∫(error²) dx.  
+🎛️ **Interactive Dashboard** — Streamlit GUI for live visual convergence.  
+📈 **Metrics Logging** — Saves results to CSV for analysis.  
+🧮 **Analytical Validation** — Compares learned \(u_\theta(x)\) vs. analytical \(u^*(x)\).
+
+---
+
+## 🧰 Tech Stack
+
+| Component | Purpose |
+|------------|----------|
+| **Python 3.10+** | Core language |
+| **PyTorch** | Neural training and autograd |
+| **Matplotlib** | Visualization |
+| **Streamlit + Plotly** | Interactive GUI |
+| **Pandas / NumPy** | Metrics and data handling |
+
+---
+
+## 🚀 Installation & Setup
+
+### 1️⃣ Clone the repository
+```bash
+git clone https://github.com/<your-username>/Neural-Poisson-RGA-1D-Interactive.git
+cd Neural-Poisson-RGA-1D-Interactive
+```
+
+### 2️⃣ Create and activate a virtual environment
+```bash
+python3 -m venv venv
+# macOS / Linux
+source venv/bin/activate
+# Windows
+venv\Scripts\activate
+```
+
+### 3️⃣ Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 🧮 How to Run
+
+### ▶️ Train the Solver
+```bash
+python src/poisson_rga.py
+```
+Plots the learned \(u_\theta(x)\) and analytical \(u^*(x)+c\) (mean-aligned), and prints **MSE**, **MAE**, and **Integrated Error**.
+
+### 🧪 Run Hyperparameter Experiments
+```bash
+python src/metrics_experiment.py
+```
+Runs multiple configurations of *T*, α, and batch size, saving results to `data/metrics_table.csv`.
+
+### 🌐 Launch the Interactive App
+```bash
+streamlit run app/streamlit_app.py
+```
+Opens a browser dashboard where you can adjust hyperparameters and visualize convergence live.
+
+---
+
+## 📊 Evaluation Metrics
+
+All metrics are computed on a uniform 401-point grid after mean alignment.
+
+| Metric | Formula | Meaning |
+|---------|----------|---------|
+| **MSE** | \( \frac{1}{N}\sum (u_\theta - u^*)^2 \) | Average squared deviation |
+| **MAE** | \( \frac{1}{N}\sum |u_\theta - u^*| \) | Mean absolute deviation |
+| **∫(error²)dx** | \( \int_0^1 (u_\theta - u^*)^2 dx \) | Continuous energy of error |
+
+---
+
+## 🧠 The Mathematics Behind It
+
+The model solves a **Poisson equation** associated with a Markov kernel:
+
+$$
+X_{n+1} = \frac{X_n + Z}{2}, \qquad Z \sim \mathrm{Bernoulli}\!\left(\tfrac12\right)
+$$
+
+with reward functions:
+
+$$
 r(x) =
 \begin{cases}
-x, & \text{linear case}, \\
-x^2, & \text{quadratic case}.
+x, & \text{(linear case)}\\
+x^2, & \text{(quadratic case)}
 \end{cases}
-\]
+$$
 
-The analytical Poisson solutions are
+and analytical solutions:
 
-\[
+$$
 u^*(x) =
 \begin{cases}
-2x, & r(x)=x, \\
+2x, & r(x)=x,\\
 \frac{4}{3}x^2 + \frac{2}{3}x, & r(x)=x^2.
 \end{cases}
-\]
+$$
 
-The **Poisson equation** is approximated by learning a parametric function \(u_\theta(x)\) that minimizes the expected residual under the kernel.
+Algorithm 2 uses two independent Markov chains to build an unbiased stochastic gradient estimator:
 
----
+$$
+\mathcal{L}(\theta) = 2\,\mathbb{E}\!\left[(g_\text{detach})\,h\right],
+$$
 
-## 🔬 2. Randomized Gradient Approximation (RGA)
-
-The RGA algorithm provides an **unbiased estimator** of the gradient of the Poisson residual by using *two independent Markov chains*.
-
-For samples \( (X_0,X_1,X_2) \) and \( (X_0,X'_1,X'_2) \) drawn independently from the kernel:
-
-\[
-\begin{aligned}
-g &= \big(u_\theta(X_0) - 2u_\theta(X_1) + u_\theta(X_2)\big)
-    - \big(r(X_0) - r(X_1)\big), \\
-h &= \big(u_\theta(X_0) - 2u_\theta(X'_1) + u_\theta(X'_2)\big), \\
-\mathcal{L}(\theta) &= 2\,\mathbb{E}[\,g_{\text{detach}}\,h\,].
-\end{aligned}
-\]
-
-`g` is detached from the gradient graph to ensure unbiasedness, and the update rule becomes a form of **Monte-Carlo Poisson residual minimization**.
+where  
+\(g = (u(X_0)-2u(X_1)+u(X_2))-(r(X_0)-r(X_1))\),  
+and  
+\(h = (u(X_0)-2u(X'_1)+u(X'_2))\).
 
 ---
 
-## ⚙️ 3. Implementation Overview
+## 📈 Results Summary
 
-| Component | Description |
-|------------|-------------|
-| **Framework** | PyTorch (manual gradient descent) |
-| **Network** | Single hidden-layer perceptron with ReLU activation |
-| **Sampling** | Two-step Markov kernel \( X_{n+1}=(X_n+Z)/2 \) |
-| **Training** | Direct parameter update: \( \theta \leftarrow \theta - \alpha\nabla_\theta \mathcal{L} \) |
-| **Evaluation** | MSE, MAE, and integral of squared error with mean alignment |
+| Parameter | Observation |
+|------------|--------------|
+| **Iterations (T)** | Error decreases rapidly up to ~5 000 iterations then plateaus. |
+| **Learning Rate (α)** | 0.05 achieves fast and stable convergence. |
+| **Batch Size** | Larger batches (≥ 1024) yield smoother gradients. |
+
+| T | α | MSE | MAE | ∫error² dx |
+|:--|:--|:--|:--|:--|
+| 500  | 0.01 | 0.0385 | 0.161 | 0.0386 |
+| 2 000 | 0.01 | 0.0054 | 0.054 | 0.0054 |
+| 5 000 | 0.01 | 0.0026 | 0.037 | 0.0026 |
+| 10 000 | 0.01 | 0.0012 | 0.026 | 0.0012 |
 
 ---
 
-## 🧩 4. Repository Structure
-Neural-Poisson-RGA-1D-Interactive/
-├── src/
-│ ├── poisson_rga.py # core training algorithm + metrics + plots
-│ └── metrics_experiment.py # hyperparameter sweeps → CSV
-├── app/
-│ └── streamlit_app.py # interactive visualization dashboard
-├── data/
-│ └── metrics_table.csv # logged experimental metrics
-├── results/
-│ ├── plots_T/ # iteration comparison
-│ ├── plots_alpha/ # learning-rate comparison
-│ └── plots_batch/ # batch-size comparison
-├── report/ # export your PDF analysis here
-├── requirements.txt
-└── README.md
+## 🎛️ Streamlit Dashboard Highlights
 
-📚 11. References
+| Feature | Description |
+|----------|--------------|
+| **Reward Type** | Choose between r(x)=x and r(x)=x² |
+| **Iterations (T)** | Number of SGD updates |
+| **Learning Rate (α)** | Gradient update step |
+| **Batch Size / Width** | Controls training stability |
+| **Seed Control** | Ensures reproducibility |
+| **Live Updates** | Observe uθ(x) vs u*(x)+c in real time |
+| **CSV Export** | Download metrics post-training |
 
-Deep Learning for Markov Chains: Lyapunov Functions, Poisson’s Equation, and Stationary Distributions
-Yanlin Qu1*, Jose Blanchet2 and Peter Glynn2 1*Columbia Business School.
+---
 
-Sutton & Barto (2018). Reinforcement Learning: An Introduction.
+## 🧭 Future Directions
 
-Zhang et al. (2020). Deep PDE Solvers via Monte Carlo Methods.
+🚀 Extend to 2-D/3-D Poisson and Laplace Equations  
+⚙️ Integrate with PINNs (Physics-Informed Neural Networks)  
+📉 Study RGA vs Deterministic Gradient Variance  
+🧩 Adaptive Learning Rate Schedulers for Long Horizon Training  
 
-✍️ 12. Author
+---
 
-Ssaumya Jaiswal
+## 📚 References
+
+1️⃣ **Qu, Y.**, **Blanchet, J.**, & **Glynn, P. W.** (2023).  
+*Deep Learning for Markov Chains: Lyapunov Functions, Poisson’s Equation, and Stationary Distributions.*  
+arXiv: [2508.16737](https://arxiv.org/abs/2508.16737)
+
+2️⃣ **Sutton, R. S.** & **Barto, A. G.** (2018). *Reinforcement Learning: An Introduction.* MIT Press.
+
+3️⃣ **Zhang, K.**, **Liu, Q.**, & **Zhu, J.** (2020). *Deep PDE Solvers via Monte Carlo Methods.* NeurIPS 2020.
+
+---
+
+## ✍️ Author
+
+**Ssaumya Jaiswal**  
+Department of Computer Science & Mathematics, Penn State University  
+📧 ssaumya.jaiswal@psu.edu
+
+---
+
+⭐ **If you found this project helpful, please consider starring it!**
